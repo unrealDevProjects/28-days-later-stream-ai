@@ -87,7 +87,8 @@
   let isAnimating = false; // Flag para saber si estamos animando automáticamente
   let lastManualValue: number | null = null; // Para detectar cambios manuales
 
-  // Función para animar la intensidad de 0 a 0.11 de manera fluida
+  // Función para animar la intensidad de 0 a 1 de manera fluida
+  // El blend se hace en el backend sin llamar a prepare(), así que es instantáneo
   function animateIntensity(duration: number = 5000) {
     // Detener animación anterior si existe
     if (intensityAnimationId !== null) {
@@ -95,42 +96,42 @@
       intensityAnimationId = null;
     }
 
-    isAnimating = true; // Marcar que estamos animando
-    setAnimating(true); // Notificar al store que estamos animando
+    isAnimating = true;
+    setAnimating(true);
 
     const startValue = 0.0;
-    const endValue = 0.11;
-    const startTime = performance.now(); // Usar performance.now() para mayor precisión
+    const endValue = 1.0; // Ahora va de 0 a 1 (blend completo)
+    const startTime = performance.now();
     let lastValue = startValue;
+    let frameCount = 0;
 
     function updateIntensity() {
       const now = performance.now();
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1.0);
 
-      // Usar una función de easing suave (ease-in-out)
+      // Easing suave (ease-in-out)
       const easedProgress =
         progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
       const currentValue = startValue + (endValue - startValue) * easedProgress;
+      const newValue = Number(currentValue.toFixed(3));
 
-      // Redondear a 5 decimales para mayor suavidad
-      const newValue = Number(currentValue.toFixed(5));
-
-      // Actualizar en cada frame para máxima fluidez (el debounce del store se encargará de optimizar)
-      // Solo evitar actualizar si el valor es exactamente el mismo
-      if (newValue !== lastValue || progress >= 1.0) {
-        pipelineValues.update((values) => ({
-          ...values,
-          denoise_strength: newValue
-        }));
-        lastValue = newValue;
+      // Actualizar cada ~3 frames para reducir carga pero mantener fluidez
+      frameCount++;
+      if (frameCount % 3 === 0 || progress >= 1.0) {
+        if (Math.abs(newValue - lastValue) > 0.005 || progress >= 1.0) {
+          pipelineValues.update((values) => ({
+            ...values,
+            denoise_strength: newValue
+          }));
+          lastValue = newValue;
+        }
       }
 
       if (progress < 1.0) {
         intensityAnimationId = requestAnimationFrame(updateIntensity);
       } else {
-        // Asegurar que llegamos exactamente al valor final
         pipelineValues.update((values) => ({
           ...values,
           denoise_strength: endValue
