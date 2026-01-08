@@ -18,6 +18,7 @@ import torch
 import base64
 import socket
 from datetime import datetime
+from external_storage import upload_to_external
 
 from config import config, Args
 from util import pil_to_frame, bytes_to_pil
@@ -197,10 +198,71 @@ class App:
             try:
                 data = await request.json()
                 image_data = data.get("image")  # Base64 encoded image
+                mode = data.get("mode", "url")  # 'url', 'dataurl', o 'external'
+                external_service = data.get("service", "tmpfiles")  # Para modo external
                 
                 if not image_data:
                     raise HTTPException(status_code=400, detail="No image data provided")
                 
+                # Para modo External (solo DigitalOcean ahora)
+                if mode == "external" and external_service == "digitalocean":
+                    photo_url = upload_to_external(image_data, "digitalocean")
+                    if photo_url:
+                        logging.info(f"Snapshot uploaded to DigitalOcean Spaces: {photo_url}")
+                        return JSONResponse({
+                            "success": True,
+                            "mode": "external",
+                            "service": "digitalocean",
+                            "photo_url": photo_url
+                        })
+                    else:
+                        # Fallback a modo local si falla
+                        logging.warning(f"DigitalOcean upload failed, falling back to local storage")
+                        mode = "url"
+                
+                # Para modo DataURL, devolver la imagen directamente en el QR
+                if mode == "dataurl":
+                    # Verificar tamaño (QR tiene límite práctico de ~3KB)
+                    if len(image_data) > 4000:  # ~3KB en base64
+                        # Comprimir imagen si es muy grande
+                        from PIL import Image
+                        import io
+                        
+                        # Decodificar imagen original
+                        if "," in image_data:
+                            img_b64 = image_data.split(",")[1]
+                        else:
+                            img_b64 = image_data
+                        
+                        img_bytes = base64.b64decode(img_b64)
+                        img = Image.open(io.BytesIO(img_bytes))
+                        
+                        # Reducir tamaño
+                        max_size = (200, 200)  # Tamaño máximo para QR
+                        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                        
+                        # Recodificar con alta compresión
+                        buffer = io.BytesIO()
+                        img.save(buffer, format="JPEG", quality=30, optimize=True)
+                        compressed_b64 = base64.b64encode(buffer.getvalue()).decode()
+                        
+                        # Crear data URL comprimida
+                        dataurl = f"data:image/jpeg;base64,{compressed_b64}"
+                    else:
+                        # Usar imagen original si es pequeña
+                        if not image_data.startswith("data:"):
+                            dataurl = f"data:image/jpeg;base64,{image_data}"
+                        else:
+                            dataurl = image_data
+                    
+                    return JSONResponse({
+                        "success": True,
+                        "mode": "dataurl",
+                        "photo_url": dataurl,
+                        "size_kb": len(dataurl) / 1024
+                    })
+                
+                # Modo URL tradicional (guardar en servidor)
                 # Remover el prefijo data:image/jpeg;base64, si existe
                 if "," in image_data:
                     image_data = image_data.split(",")[1]
@@ -231,6 +293,7 @@ class App:
                 
                 return JSONResponse({
                     "success": True,
+                    "mode": "url",
                     "photo_id": photo_id,
                     "photo_url": photo_url
                 })

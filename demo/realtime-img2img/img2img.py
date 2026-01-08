@@ -72,7 +72,7 @@ class Pipeline:
         #   [32, 45] = efecto medio
         #   [40, 49] = efecto alto
         #   [45, 49] = efecto máximo (casi no reconoces la imagen original)
-        self.t_index_list = [35, 41]  # Efecto alto - más transformación
+        self.t_index_list = [32, 45]  # Efecto alto - más transformación
         
         self.stream = StreamDiffusionWrapper(
             model_id_or_path=base_model,

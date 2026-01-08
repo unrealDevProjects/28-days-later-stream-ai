@@ -5,12 +5,12 @@
   import Button from '$lib/components/Button.svelte';
   import Floppy from '$lib/icons/floppy.svelte';
   import QRModal from '$lib/components/QRModal.svelte';
-  import { snapImage, snapImageWithQR } from '$lib/utils';
+  import { snapImage, snapImageWithQR, captureContainerWithFrame } from '$lib/utils';
 
   // Ruta de la imagen del marco (debe estar en static/)
   // En SvelteKit, los archivos en static/ se sirven desde la raíz, sin /static/
   // Si tu imagen está en static/images/frame.png, la ruta es /images/frame.png
-  export let frameImagePath: string = '/images/frame.png';
+  export let frameImagePath: string = '/images/frame-2.png';
 
   // Función para iniciar el procesamiento, pasada desde el componente padre
   export let toggleLcmLive: () => Promise<void>;
@@ -18,6 +18,7 @@
   $: isLCMRunning = $lcmLiveStatus !== LCMLiveStatus.DISCONNECTED;
   $: console.log('isLCMRunning', isLCMRunning);
   let imageEl: HTMLImageElement;
+  let containerEl: HTMLDivElement;
   let showInitialUI: boolean = true;
 
   // Estado para el modal QR
@@ -29,7 +30,8 @@
     if (isLCMRunning && !isTakingSnapshot) {
       isTakingSnapshot = true;
 
-      const result = await snapImageWithQR(imageEl, {
+      // Capturar el contenedor completo con el marco
+      const result = await captureContainerWithFrame(containerEl, {
         prompt: getPipelineValues()?.prompt,
         negative_prompt: getPipelineValues()?.negative_prompt,
         seed: getPipelineValues()?.seed,
@@ -66,13 +68,10 @@
 </script>
 
 <!-- Contenedor principal con formato 9:16 (vertical/portrait) -->
-<div class="relative mx-auto aspect-[9/16] w-full max-w-md self-center">
-  <!-- Imagen del marco como fondo/overlay -->
-  <img src={frameImagePath} alt="Frame" class="absolute inset-0 h-full w-full object-contain" />
-
-  <!-- Área donde se muestra el video/imagen procesada -->
+<div bind:this={containerEl} class="relative mx-auto aspect-[9/16] w-full max-w-md self-center">
+  <!-- Área donde se muestra el video/imagen procesada - VA PRIMERO -->
   <!-- Ajusta estos valores (top, left, width, height) según la posición del hueco en tu marco -->
-  <div class="absolute left-[14%] top-[8%] h-[71%] w-[72%]">
+  <div class="absolute left-[7%] top-[2%] z-0 h-[86%] w-[84%]">
     <!-- svelte-ignore a11y-missing-attribute -->
     {#if isLCMRunning && $streamId}
       <img
@@ -121,6 +120,13 @@
       />
     {/if}
   </div>
+
+  <!-- Imagen del marco como overlay - VA DESPUÉS del video con z-index mayor -->
+  <img
+    src={frameImagePath}
+    alt="Frame"
+    class="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
+  />
 
   <!-- UI inicial - se muestra sobre todo el marco -->
   {#if showInitialUI}

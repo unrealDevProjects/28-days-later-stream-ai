@@ -4,3 +4,5 @@ public/
 *.pem
 !lib/
 !static/
+.env
+.env.local
