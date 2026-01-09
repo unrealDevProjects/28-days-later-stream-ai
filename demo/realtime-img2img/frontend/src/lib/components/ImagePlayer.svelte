@@ -1,6 +1,7 @@
 <script lang="ts">
   import { lcmLiveStatus, LCMLiveStatus, streamId } from '$lib/lcmLive';
   import { getPipelineValues } from '$lib/store';
+  import { mediaStream, mediaStreamStatus, MediaStreamStatusEnum } from '$lib/mediaStream';
 
   import Button from '$lib/components/Button.svelte';
   import Floppy from '$lib/icons/floppy.svelte';
@@ -20,6 +21,12 @@
   let imageEl: HTMLImageElement;
   let containerEl: HTMLDivElement;
   let showInitialUI: boolean = true;
+  let originalVideoEl: HTMLVideoElement; // Video element para la cámara original muy pequeña
+
+  // Actualizar el video cuando cambie el mediaStream
+  $: if (originalVideoEl && $mediaStream) {
+    originalVideoEl.srcObject = $mediaStream;
+  }
 
   // Estado para el modal QR
   let showQRModal: boolean = false;
@@ -80,35 +87,60 @@
     if (isLCMRunning && !isTakingSnapshot) {
       isTakingSnapshot = true;
 
-      // Capturar el contenedor completo con el marco
-      const result = await captureContainerWithFrame(containerEl, {
-        prompt: getPipelineValues()?.prompt,
-        negative_prompt: getPipelineValues()?.negative_prompt,
-        seed: getPipelineValues()?.seed,
-        guidance_scale: getPipelineValues()?.guidance_scale
-      });
-
-      if (result.success && result.photo_url) {
-        photoUrl = result.photo_url;
-        showQRModal = true;
-      } else {
-        console.error('Error al tomar foto:', result.error);
-        // Fallback: descargar directamente si falla el servidor
-        snapImage(imageEl, {
+      try {
+        const result = await captureContainerWithFrame(containerEl, {
           prompt: getPipelineValues()?.prompt,
           negative_prompt: getPipelineValues()?.negative_prompt,
           seed: getPipelineValues()?.seed,
           guidance_scale: getPipelineValues()?.guidance_scale
         });
-      }
 
-      isTakingSnapshot = false;
+        if (result.success && result.photo_url) {
+          photoUrl = result.photo_url;
+          showQRModal = true;
+        } else {
+          // Fallback: capturar solo la imagen sin marco
+          const fallbackResult = await snapImageWithQR(imageEl, {
+            prompt: getPipelineValues()?.prompt,
+            negative_prompt: getPipelineValues()?.negative_prompt,
+            seed: getPipelineValues()?.seed,
+            guidance_scale: getPipelineValues()?.guidance_scale
+          });
+          if (fallbackResult.success && fallbackResult.photo_url) {
+            photoUrl = fallbackResult.photo_url;
+            showQRModal = true;
+          }
+        }
+      } catch (error) {
+        console.error('Error al capturar foto:', error);
+        // Fallback en caso de error
+        try {
+          const fallbackResult = await snapImageWithQR(imageEl, {
+            prompt: getPipelineValues()?.prompt,
+            negative_prompt: getPipelineValues()?.negative_prompt,
+            seed: getPipelineValues()?.seed,
+            guidance_scale: getPipelineValues()?.guidance_scale
+          });
+          if (fallbackResult.success && fallbackResult.photo_url) {
+            photoUrl = fallbackResult.photo_url;
+            showQRModal = true;
+          }
+        } catch (fallbackError) {
+          console.error('Error en fallback:', fallbackError);
+        }
+      } finally {
+        isTakingSnapshot = false;
+      }
     }
   }
 
   function closeQRModal() {
     showQRModal = false;
     photoUrl = '';
+    
+    // Asegurar que el estado de snapshot se resetee
+    isTakingSnapshot = false;
+    
     // Detener cuenta atrás si está activa
     stopCountdown();
     
@@ -127,8 +159,8 @@
   }
 </script>
 
-<!-- Contenedor principal con formato 9:16 (vertical/portrait) -->
-<div bind:this={containerEl} class="relative mx-auto aspect-[9/16] w-full max-w-md self-center">
+<!-- Contenedor principal con formato 9:16 (vertical/portrait) - ajustado al tamaño del marco -->
+<div bind:this={containerEl} class="relative mx-auto aspect-[9/16] w-full max-w-full h-full max-h-screen self-center" style="width: min(100vw, 56.25vh); height: min(100vh, 177.78vw);">
   <!-- Fondo: fondo.png - solo visible cuando showInitialUI es true -->
   {#if showInitialUI}
     <img
@@ -189,6 +221,18 @@
         />
       {/if}
     </div>
+  {/if}
+
+  <!-- Vista previa de cámara original muy pequeña (10x10px, circular, siempre visible pero casi imperceptible) -->
+  {#if !showInitialUI && isLCMRunning && $mediaStreamStatus === MediaStreamStatusEnum.CONNECTED && $mediaStream}
+    <video
+      bind:this={originalVideoEl}
+      class="absolute left-[8%] top-[3%] z-20 rounded-full"
+      autoplay
+      muted
+      playsinline
+      style="pointer-events: none; width: 10px; height: 10px; object-fit: cover;"
+    ></video>
   {/if}
 
   <!-- Imagen del marco como overlay - sin blur -->

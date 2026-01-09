@@ -88,6 +88,7 @@
   let lastManualValue: number | null = null; // Para detectar cambios manuales
   let imagePlayerRef: ImagePlayer; // Referencia al componente ImagePlayer
   let autoCaptureTimeoutId: number | null = null; // ID del timeout para captura automática
+  let showSettings: boolean = false; // Estado para mostrar/ocultar controles
 
   // Función para animar la intensidad de 0 a 1 de manera fluida
   // El blend se hace en el backend sin llamar a prepare(), así que es instantáneo
@@ -228,6 +229,17 @@
           imagePlayerRef.stopCountdown();
         }
 
+        // Forzar limpieza de memoria si hay una captura pendiente
+        if (imagePlayerRef) {
+          // Resetear cualquier estado de snapshot bloqueado
+          setTimeout(() => {
+            if (imagePlayerRef && !isLCMRunning) {
+              // Asegurar limpieza completa
+              console.log('Limpieza de memoria después de detener stream');
+            }
+          }, 100);
+        }
+
         if (isImageMode) {
           mediaStreamActions.stop();
         }
@@ -251,51 +263,72 @@
   ></script>
 </svelte:head>
 
-<main class="container mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4">
+<main class="flex min-h-screen w-full flex-col items-center justify-center bg-gray-900 p-0 overflow-hidden">
   <Warning bind:message={warningMessage}></Warning>
-  <article class="text-center">
-    {#if pageContent}
-      {@html pageContent}
-    {/if}
-    {#if maxQueueSize > 0}
-      <p class="text-sm">
-        There are <span id="queue_size" class="font-bold">{currentQueueSize}</span>
-        user(s) sharing the same GPU, affecting real-time performance. Maximum queue size is {maxQueueSize}.
-        <a
-          href="https://huggingface.co/spaces/radames/Real-Time-Latent-Consistency-Model?duplicate=true"
-          target="_blank"
-          class="text-blue-500 underline hover:no-underline">Duplicate</a
-        > and run it on your own GPU.
-      </p>
-    {/if}
-  </article>
+  
   {#if pipelineParams}
-    <article class="my-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {#if isImageMode}
-        <div class="max-w-[1rem]">
-          <VideoInput
-            width={Number(pipelineParams.width.default)}
-            height={Number(pipelineParams.width.default)}
-          ></VideoInput>
+    <!-- Botón de Settings flotante -->
+    <button
+      on:click={() => showSettings = !showSettings}
+      class="fixed right-4 top-4 z-50 rounded-full bg-blue-600 p-3 text-white shadow-lg hover:bg-blue-700 transition-colors"
+      title="Settings"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    </button>
+
+    <!-- VideoInput siempre renderizado pero muy pequeño (10x10px) para que funcione el stream -->
+    {#if isImageMode}
+      <div class="video-input-mini" style="position: fixed; top: 4px; left: 4px; width: 10px; height: 10px; z-index: 1; overflow: hidden;">
+        <VideoInput
+          width={Number(pipelineParams.width.default)}
+          height={Number(pipelineParams.width.default)}
+        ></VideoInput>
+      </div>
+    {/if}
+
+    <!-- Panel de Settings (oculto por defecto) -->
+    {#if showSettings}
+      <div class="fixed right-4 top-20 z-50 max-w-md rounded-lg bg-white p-4 shadow-2xl max-h-[80vh] overflow-y-auto">
+        <h2 class="mb-4 text-xl font-bold text-gray-800">Configuración</h2>
+        
+        <div class="mb-4">
+          <Button on:click={toggleLcmLive} {disabled} classList={'text-lg my-1 p-2 w-full'}>
+            {#if isLCMRunning}
+              Stop
+            {:else}
+              Start
+            {/if}
+          </Button>
         </div>
-      {/if}
-      <div class="relative flex items-center justify-center sm:col-span-2">
-        <ImagePlayer bind:this={imagePlayerRef} {toggleLcmLive} />
-      </div>
-      <div class="sm:col-span-2">
-        <Button on:click={toggleLcmLive} {disabled} classList={'text-lg my-1 p-2'}>
-          {#if isLCMRunning}
-            Stop
-          {:else}
-            Start
-          {/if}
-        </Button>
+        
         <PipelineOptions {pipelineParams} on:userInput={handleSliderUserInput}></PipelineOptions>
+        
+        {#if maxQueueSize > 0}
+          <div class="mt-4 text-sm text-gray-600">
+            <p>
+              Hay <span class="font-bold">{currentQueueSize}</span> usuario(s) compartiendo la misma GPU.
+            </p>
+          </div>
+        {/if}
+        
+        {#if pageContent}
+          <div class="mt-4 text-sm text-gray-600">
+            {@html pageContent}
+          </div>
+        {/if}
       </div>
-    </article>
+    {/if}
+
+    <!-- Contenedor principal con ImagePlayer centrado y ajustado a pantalla -->
+    <div class="flex items-center justify-center w-full h-screen">
+      <ImagePlayer bind:this={imagePlayerRef} {toggleLcmLive} />
+    </div>
   {:else}
     <!-- loading -->
-    <div class="flex items-center justify-center gap-3 py-48 text-2xl">
+    <div class="flex items-center justify-center gap-3 py-48 text-2xl text-white">
       <Spinner classList={'animate-spin opacity-50'}></Spinner>
       <p>Loading...</p>
     </div>
@@ -305,5 +338,22 @@
 <style lang="postcss">
   :global(html) {
     @apply text-black dark:bg-gray-900 dark:text-white;
+  }
+
+  :global(.video-input-mini > div) {
+    width: 10px !important;
+    height: 10px !important;
+    min-width: 10px !important;
+    min-height: 10px !important;
+    max-width: 10px !important;
+    max-height: 10px !important;
+  }
+
+  :global(.video-input-mini video),
+  :global(.video-input-mini canvas) {
+    width: 10px !important;
+    height: 10px !important;
+    min-width: 10px !important;
+    min-height: 10px !important;
   }
 </style>

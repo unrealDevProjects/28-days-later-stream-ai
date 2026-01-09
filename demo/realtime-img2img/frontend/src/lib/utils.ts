@@ -91,20 +91,25 @@ export async function captureContainerWithFrame(
   info?: IImageInfo
 ): Promise<SnapshotResult> {
   try {
-    // Usar html2canvas para capturar todo el contenedor incluyendo el marco
+    // Esperar un momento para que el DOM se estabilice
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Capturar con html2canvas - opciones básicas
     const canvas = await html2canvas(containerEl, {
       backgroundColor: null,
-      scale: 2, // Mayor resolución
+      scale: 1.5,
       logging: false,
       useCORS: true,
       allowTaint: true
     });
 
-    // Convertir canvas a dataURL
-    const dataURL = canvas.toDataURL('image/jpeg', 0.95);
+    // Convertir a JPEG
+    const dataURL = canvas.toDataURL('image/jpeg', 0.9);
     
-    // Proceder con el proceso normal de compartir
-    return await processAndShareImage(dataURL, info);
+    // Subir y compartir
+    const result = await processAndShareImage(dataURL, info);
+    
+    return result;
   } catch (err) {
     console.error('Error al capturar con marco:', err);
     return {
