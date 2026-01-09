@@ -51,10 +51,13 @@
           countdownNumber--;
           showNextNumber();
         } else {
-          // Si ya es 0, después de mostrarlo 1 segundo, capturar
+          // Si ya es 0, después de mostrarlo 1 segundo, ocultar y capturar
           showCountdown = false;
           countdownTimeoutId = null;
-          takeSnapshot();
+          // Esperar un momento para que el DOM se actualice y oculte el contador antes de capturar
+          setTimeout(() => {
+            takeSnapshot();
+          }, 100); // 100ms de delay para asegurar que el contador se oculte
         }
       }, 1000); // 1 segundo por número
     };
