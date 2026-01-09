@@ -89,6 +89,9 @@
   let imagePlayerRef: ImagePlayer; // Referencia al componente ImagePlayer
   let autoCaptureTimeoutId: number | null = null; // ID del timeout para captura automática
   let showSettings: boolean = false; // Estado para mostrar/ocultar controles
+  
+  // URL del formulario de Sony Pictures
+  let sonyFormUrl: string = 'https://www.sonypictures.es/form/28-ad-peor-selfie';
 
   // Función para animar la intensidad de 0 a 1 de manera fluida
   // El blend se hace en el backend sin llamar a prepare(), así que es instantáneo
@@ -324,7 +327,7 @@
 
     <!-- Contenedor principal con ImagePlayer centrado y ajustado a pantalla -->
     <div class="flex items-center justify-center w-full h-screen">
-      <ImagePlayer bind:this={imagePlayerRef} {toggleLcmLive} />
+      <ImagePlayer bind:this={imagePlayerRef} {toggleLcmLive} formUrl={sonyFormUrl} />
     </div>
   {:else}
     <!-- loading -->

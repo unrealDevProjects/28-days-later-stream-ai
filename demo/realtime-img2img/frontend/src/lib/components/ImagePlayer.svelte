@@ -6,6 +6,7 @@
   import Button from '$lib/components/Button.svelte';
   import Floppy from '$lib/icons/floppy.svelte';
   import QRModal from '$lib/components/QRModal.svelte';
+  import FormModal from '$lib/components/FormModal.svelte';
   import { snapImage, snapImageWithQR, captureContainerWithFrame } from '$lib/utils';
 
   // Ruta de la imagen del marco (debe estar en static/)
@@ -32,6 +33,11 @@
   let showQRModal: boolean = false;
   let photoUrl: string = '';
   let isTakingSnapshot: boolean = false;
+
+  // Estado para el modal de formulario
+  let showFormModal: boolean = false;
+  // URL del formulario de Sony Pictures - puede venir como prop o desde config
+  export let formUrl: string = '';
 
   // Estado para la cuenta atrás
   let showCountdown: boolean = false;
@@ -97,7 +103,12 @@
 
         if (result.success && result.photo_url) {
           photoUrl = result.photo_url;
-          showQRModal = true;
+          // Mostrar primero el formulario si hay URL, luego el QR
+          if (formUrl) {
+            showFormModal = true;
+          } else {
+            showQRModal = true;
+          }
         } else {
           // Fallback: capturar solo la imagen sin marco
           const fallbackResult = await snapImageWithQR(imageEl, {
@@ -108,7 +119,12 @@
           });
           if (fallbackResult.success && fallbackResult.photo_url) {
             photoUrl = fallbackResult.photo_url;
-            showQRModal = true;
+            // Mostrar primero el formulario si hay URL, luego el QR
+            if (formUrl) {
+              showFormModal = true;
+            } else {
+              showQRModal = true;
+            }
           }
         }
       } catch (error) {
@@ -123,7 +139,12 @@
           });
           if (fallbackResult.success && fallbackResult.photo_url) {
             photoUrl = fallbackResult.photo_url;
-            showQRModal = true;
+            // Mostrar primero el formulario si hay URL, luego el QR
+            if (formUrl) {
+              showFormModal = true;
+            } else {
+              showQRModal = true;
+            }
           }
         } catch (fallbackError) {
           console.error('Error en fallback:', fallbackError);
@@ -134,8 +155,17 @@
     }
   }
 
+  function closeFormModal() {
+    showFormModal = false;
+    // Después de cerrar el formulario, mostrar el QR
+    if (photoUrl) {
+      showQRModal = true;
+    }
+  }
+
   function closeQRModal() {
     showQRModal = false;
+    showFormModal = false; // Asegurar que el formulario también esté cerrado
     photoUrl = '';
     
     // Asegurar que el estado de snapshot se resetee
@@ -279,7 +309,10 @@
   {/if}
 </div>
 
-<!-- Modal QR -->
+<!-- Modal de formulario (se muestra primero si hay formUrl) -->
+<FormModal formUrl={formUrl} show={showFormModal} on:close={closeFormModal} />
+
+<!-- Modal QR (se muestra después del formulario o directamente si no hay formulario) -->
 <QRModal {photoUrl} show={showQRModal} on:close={closeQRModal} />
 
 <style>
