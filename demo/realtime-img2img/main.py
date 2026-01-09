@@ -112,14 +112,20 @@ class App:
                         await self.conn_manager.disconnect(user_id)
                         return
                     data = await self.conn_manager.receive_json(user_id)
-                    if data["status"] == "next_frame":
+                    if data is None:
+                        # Conexión cerrada
+                        break
+                    if data.get("status") == "next_frame":
                         info = pipeline.Info()
                         params = await self.conn_manager.receive_json(user_id)
+                        if params is None:
+                            # Conexión cerrada
+                            break
                         params = pipeline.InputParams(**params)
                         params = SimpleNamespace(**params.dict())
                         if info.input_mode == "image":
                             image_data = await self.conn_manager.receive_bytes(user_id)
-                            if len(image_data) == 0:
+                            if image_data is None or len(image_data) == 0:
                                 await self.conn_manager.send_json(
                                     user_id, {"status": "send_frame"}
                                 )
@@ -313,6 +319,8 @@ class App:
         if not os.path.exists("public"):
             os.makedirs("public")
 
+        # Servir archivos estáticos
+        # Usar html=True permite que FastAPI sirva index.html en rutas no encontradas (SPA routing)
         self.app.mount(
             "/", StaticFiles(directory="./frontend/public", html=True), name="public"
         )

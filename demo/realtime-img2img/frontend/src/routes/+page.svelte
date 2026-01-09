@@ -86,6 +86,8 @@
   let intensityAnimationId: number | null = null;
   let isAnimating = false; // Flag para saber si estamos animando automáticamente
   let lastManualValue: number | null = null; // Para detectar cambios manuales
+  let imagePlayerRef: ImagePlayer; // Referencia al componente ImagePlayer
+  let autoCaptureTimeoutId: number | null = null; // ID del timeout para captura automática
 
   // Función para animar la intensidad de 0 a 1 de manera fluida
   // El blend se hace en el backend sin llamar a prepare(), así que es instantáneo
@@ -141,6 +143,18 @@
         intensityAnimationId = null;
         isAnimating = false; // Marcar que terminó la animación
         setAnimating(false); // Notificar al store que terminó la animación
+        
+        // Esperar 11 segundos y luego iniciar cuenta atrás (cuenta atrás dura 4 segundos = 15 total)
+        if (autoCaptureTimeoutId !== null) {
+          clearTimeout(autoCaptureTimeoutId);
+        }
+        autoCaptureTimeoutId = window.setTimeout(() => {
+          if (imagePlayerRef && isLCMRunning) {
+            console.log('Iniciando cuenta atrás antes de captura automática');
+            imagePlayerRef.startCountdown();
+          }
+          autoCaptureTimeoutId = null;
+        }, 11000); // 11 segundos antes de iniciar cuenta atrás (4 segundos de cuenta atrás = 15 total)
       }
     }
 
@@ -159,6 +173,15 @@
       setAnimating(false); // Notificar al store que terminó la animación
       // Log deshabilitado para mejor rendimiento
       // console.log('Animación detenida por cambio manual del slider');
+    }
+    // Cancelar captura automática si está programada
+    if (autoCaptureTimeoutId !== null) {
+      clearTimeout(autoCaptureTimeoutId);
+      autoCaptureTimeoutId = null;
+    }
+    // Detener cuenta atrás si está activa
+    if (imagePlayerRef) {
+      imagePlayerRef.stopCountdown();
     }
   }
 
@@ -194,6 +217,16 @@
       } else {
         // Detener animación si está corriendo
         stopAnimationIfRunning();
+        
+        // Cancelar captura automática si está programada
+        if (autoCaptureTimeoutId !== null) {
+          clearTimeout(autoCaptureTimeoutId);
+          autoCaptureTimeoutId = null;
+        }
+        // Detener cuenta atrás si está activa
+        if (imagePlayerRef) {
+          imagePlayerRef.stopCountdown();
+        }
 
         if (isImageMode) {
           mediaStreamActions.stop();
@@ -247,7 +280,7 @@
         </div>
       {/if}
       <div class="relative flex items-center justify-center sm:col-span-2">
-        <ImagePlayer {toggleLcmLive} />
+        <ImagePlayer bind:this={imagePlayerRef} {toggleLcmLive} />
       </div>
       <div class="sm:col-span-2">
         <Button on:click={toggleLcmLive} {disabled} classList={'text-lg my-1 p-2'}>

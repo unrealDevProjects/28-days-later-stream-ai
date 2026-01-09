@@ -73,12 +73,12 @@
 
       <!-- Botones -->
       <div class="flex w-full gap-3">
-        <Button
+       <!--  <Button
           on:click={() => window.open(photoUrl, '_blank')}
           classList="flex-1 !bg-gray-700 hover:!bg-gray-600"
         >
           Ver foto
-        </Button>
+        </Button> -->
         <Button on:click={close} classList="flex-1 !bg-red-600 hover:!bg-red-700">Cerrar</Button>
       </div>
     </div>

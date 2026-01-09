@@ -106,13 +106,17 @@ class ConnectionManager:
             websocket = self.get_websocket(user_id)
             if websocket:
                 return await websocket.receive_json()
+            return None
         except Exception as e:
             logging.error(f"Error: Receive json: {e}")
+            return None
 
     async def receive_bytes(self, user_id: UUID) -> bytes:
         try:
             websocket = self.get_websocket(user_id)
             if websocket:
                 return await websocket.receive_bytes()
+            return None
         except Exception as e:
             logging.error(f"Error: Receive bytes: {e}")
+            return None

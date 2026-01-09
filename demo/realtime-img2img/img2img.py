@@ -25,8 +25,8 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="diffusers.imag
 base_model = "stabilityai/sd-turbo"
 taesd_model = "madebyollin/taesd"
 
-default_prompt = "Portrait of hyperrealistic zombie, decaying flesh, exposed bone, rotting skin, bloodshot eyes, menacing glare, detailed, cinematic lighting, 8k, photorealistic, extreme details, unreal engine 5, masterpiece, professional photography, realistic textures, horror aesthetic, no cartoon, no stylized"
-default_negative_prompt = "black and white, blurry, low resolution, pixelated, pixel art, low quality, low fidelity"
+default_prompt = "Zombie dead, horror aesthetic"
+default_negative_prompt = "blurry, low resolution, pixelated, low quality, distorted face, oversized head, giant face, deformed proportions, bad anatomy"
 
 page_content = """"""
 
@@ -55,10 +55,10 @@ class Pipeline:
             id="denoise_strength",
         )
         width: int = Field(
-            512, min=2, max=15, title="Width", disabled=True, hide=True, id="width"
+            800, min=2, max=15, title="Width", disabled=True, hide=True, id="width"
         )
         height: int = Field(
-            512, min=2, max=15, title="Height", disabled=True, hide=True, id="height"
+            800, min=2, max=15, title="Height", disabled=True, hide=True, id="height"
         )
 
     def __init__(self, args: Args, device: torch.device, torch_dtype: torch.dtype):
@@ -66,17 +66,24 @@ class Pipeline:
         
         # t_index_list FIJO - nunca cambia durante la ejecución
         # Esto evita llamadas a prepare() que bloquean la GPU
-        # Valores más altos = más transformación (máximo efecto del prompt)
+        # IMPORTANTE: En Stable Diffusion, índices más BAJOS = MÁS efecto/transformación
+        #             índices más ALTOS = MENOS efecto, respeta más la imagen original
         # Opciones:
-        #   [20, 35] = efecto suave
-        #   [32, 45] = efecto medio
-        #   [40, 49] = efecto alto
-        #   [45, 49] = efecto máximo (casi no reconoces la imagen original)
-        self.t_index_list = [32, 45]  # Efecto alto - más transformación
+        #   [40, 49] = efecto muy suave, respeta mucho la pose y estructura original
+        #   [35, 45] = efecto suave, menos variación
+        #   [30, 40] = efecto medio, variación moderada
+        #   [20, 35] = efecto alto - más transformación (puede perder la pose)
+        #   [10, 25] = efecto máximo - mucha transformación
+        # Para que siga la pose, usamos valores MÁS ALTOS
+        self.t_index_list = [30, 35]  # Efecto suave - respeta la pose y estructura original
+        
+        # Para mejor calidad de imagen, deshabilitamos tiny VAE (usa VAE completo)
+        # Si quieres más velocidad a cambio de calidad, puedes usar args.taesd
+        use_tiny_vae_for_quality = False  # False = mejor calidad, True = más velocidad
         
         self.stream = StreamDiffusionWrapper(
             model_id_or_path=base_model,
-            use_tiny_vae=args.taesd,
+            use_tiny_vae=use_tiny_vae_for_quality if not args.taesd else args.taesd,
             device=device,
             dtype=torch_dtype,
             t_index_list=self.t_index_list,
@@ -101,8 +108,8 @@ class Pipeline:
         self.stream.prepare(
             prompt=default_prompt,
             negative_prompt=default_negative_prompt,
-            num_inference_steps=50,
-            guidance_scale=1.2,
+            num_inference_steps=50,  # Máximo permitido por el scheduler LCM
+            guidance_scale=1.3,  # Ligeramente aumentado para más detalle sin perder la pose
         )
 
     def predict(self, params: "Pipeline.InputParams") -> Image.Image:
@@ -121,8 +128,8 @@ class Pipeline:
             self.stream.prepare(
                 prompt=params.prompt,
                 negative_prompt=default_negative_prompt,
-                num_inference_steps=50,
-                guidance_scale=1.2,
+                num_inference_steps=50,  # Máximo permitido por el scheduler LCM
+                guidance_scale=1.3,  # Ligeramente aumentado para más detalle sin perder la pose
             )
             self.last_prompt = params.prompt
         
@@ -146,5 +153,10 @@ class Pipeline:
         
         # Convertir de vuelta a imagen
         blended_image = Image.fromarray(blended_np.astype(np.uint8))
+        
+        # Post-procesamiento para mejorar calidad: sharpening suave
+        from PIL import ImageFilter
+        # Aplicar un sharpening muy suave para mejorar detalles sin artefactos
+        blended_image = blended_image.filter(ImageFilter.UnsharpMask(radius=1, percent=100, threshold=3))
         
         return blended_image
