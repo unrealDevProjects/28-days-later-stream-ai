@@ -90,46 +90,92 @@
 
   // Exportar función para que pueda ser llamada desde el componente padre
   export async function takeSnapshot() {
-    if (isLCMRunning && !isTakingSnapshot) {
-      isTakingSnapshot = true;
+    // Evitar múltiples capturas simultáneas - validación más estricta
+    if (!isLCMRunning) {
+      console.warn('Snapshot bloqueado - Stream no está corriendo');
+      return;
+    }
+    
+    if (isTakingSnapshot) {
+      console.warn('Snapshot bloqueado - Ya hay una captura en progreso');
+      return;
+    }
 
-      try {
-        const result = await captureContainerWithFrame(containerEl, {
+    // Verificar que tenemos los elementos necesarios
+    if (!containerEl || !imageEl) {
+      console.error('Snapshot bloqueado - Elementos del DOM no disponibles');
+      return;
+    }
+
+    isTakingSnapshot = true;
+    console.log('Iniciando captura de foto...');
+
+    let timeoutId: number | null = null;
+    
+    try {
+      // Timeout de seguridad para evitar que se quede cargando indefinidamente
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error('Timeout: La captura tardó más de 15 segundos'));
+        }, 15000);
+      });
+
+      const capturePromise = captureContainerWithFrame(containerEl, {
+        prompt: getPipelineValues()?.prompt,
+        negative_prompt: getPipelineValues()?.negative_prompt,
+        seed: getPipelineValues()?.seed,
+        guidance_scale: getPipelineValues()?.guidance_scale
+      });
+
+      const result = await Promise.race([capturePromise, timeoutPromise]);
+
+      // Limpiar timeout si completó a tiempo
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      if (result && result.success && result.photo_url) {
+        photoUrl = result.photo_url;
+        console.log('Foto capturada exitosamente, URL:', result.photo_url);
+        // Mostrar primero el formulario si hay URL, luego el QR
+        if (formUrl) {
+          showFormModal = true;
+        } else {
+          showQRModal = true;
+        }
+      } else {
+        console.warn('Captura con marco falló, intentando fallback...');
+        // Fallback: capturar solo la imagen sin marco
+        const fallbackResult = await snapImageWithQR(imageEl, {
           prompt: getPipelineValues()?.prompt,
           negative_prompt: getPipelineValues()?.negative_prompt,
           seed: getPipelineValues()?.seed,
           guidance_scale: getPipelineValues()?.guidance_scale
         });
-
-        if (result.success && result.photo_url) {
-          photoUrl = result.photo_url;
-          // Mostrar primero el formulario si hay URL, luego el QR
+        if (fallbackResult && fallbackResult.success && fallbackResult.photo_url) {
+          photoUrl = fallbackResult.photo_url;
+          console.log('Fallback exitoso, URL:', fallbackResult.photo_url);
           if (formUrl) {
             showFormModal = true;
           } else {
             showQRModal = true;
           }
         } else {
-          // Fallback: capturar solo la imagen sin marco
-          const fallbackResult = await snapImageWithQR(imageEl, {
-            prompt: getPipelineValues()?.prompt,
-            negative_prompt: getPipelineValues()?.negative_prompt,
-            seed: getPipelineValues()?.seed,
-            guidance_scale: getPipelineValues()?.guidance_scale
-          });
-          if (fallbackResult.success && fallbackResult.photo_url) {
-            photoUrl = fallbackResult.photo_url;
-            // Mostrar primero el formulario si hay URL, luego el QR
-            if (formUrl) {
-              showFormModal = true;
-            } else {
-              showQRModal = true;
-            }
-          }
+          console.error('Ambos métodos de captura fallaron', fallbackResult);
         }
-      } catch (error) {
-        console.error('Error al capturar foto:', error);
-        // Fallback en caso de error
+      }
+    } catch (error) {
+      console.error('Error al capturar foto:', error);
+      
+      // Limpiar timeout si aún está activo
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
+      // Intentar fallback una vez más SOLO si el stream sigue corriendo
+      if (isLCMRunning && imageEl) {
         try {
           const fallbackResult = await snapImageWithQR(imageEl, {
             prompt: getPipelineValues()?.prompt,
@@ -137,21 +183,29 @@
             seed: getPipelineValues()?.seed,
             guidance_scale: getPipelineValues()?.guidance_scale
           });
-          if (fallbackResult.success && fallbackResult.photo_url) {
+          if (fallbackResult && fallbackResult.success && fallbackResult.photo_url) {
             photoUrl = fallbackResult.photo_url;
-            // Mostrar primero el formulario si hay URL, luego el QR
             if (formUrl) {
               showFormModal = true;
             } else {
               showQRModal = true;
             }
+          } else {
+            console.error('Fallback también falló:', fallbackResult);
           }
         } catch (fallbackError) {
-          console.error('Error en fallback:', fallbackError);
+          console.error('Error en fallback también:', fallbackError);
         }
-      } finally {
-        isTakingSnapshot = false;
       }
+    } finally {
+      // Limpiar timeout si aún está activo
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      
+      // SIEMPRE resetear el estado, sin importar qué pasó
+      isTakingSnapshot = false;
+      console.log('Estado de snapshot reseteado');
     }
   }
 
@@ -164,23 +218,26 @@
   }
 
   function closeQRModal() {
+    console.log('Cerrando QR modal, recargando página...');
+    
+    // Cerrar modales primero
     showQRModal = false;
-    showFormModal = false; // Asegurar que el formulario también esté cerrado
-    photoUrl = '';
+    showFormModal = false;
     
-    // Asegurar que el estado de snapshot se resetee
-    isTakingSnapshot = false;
-    
-    // Detener cuenta atrás si está activa
-    stopCountdown();
-    
-    // Detener el stream si está corriendo y volver a la pantalla principal
-    if (isLCMRunning) {
-      toggleLcmLive();
+    // Recargar la página inmediatamente usando múltiples métodos para asegurar que funcione
+    // Esto resetea completamente el estado de la aplicación
+    try {
+      // Método 1: Forzar reload desde el servidor
+      window.location.reload(true);
+    } catch (e) {
+      // Método 2: Fallback usando href
+      try {
+        window.location.href = window.location.href;
+      } catch (e2) {
+        // Método 3: Último recurso - replace
+        window.location.replace(window.location.pathname);
+      }
     }
-    
-    // Resetear a la pantalla inicial
-    showInitialUI = true;
   }
 
   function handleStartExperience() {

@@ -91,7 +91,8 @@
   let showSettings: boolean = false; // Estado para mostrar/ocultar controles
   
   // URL del formulario de Sony Pictures
-  let sonyFormUrl: string = 'https://www.sonypictures.es/form/28-ad-peor-selfie';
+  // Intentamos añadir parámetros para indicar que está en iframe y evitar el banner de cookies
+  let sonyFormUrl: string = 'https://www.sonypictures.es/form/28-ad-peor-selfie?iframe=true&embedded=true&skipBanner=true';
 
   // Función para animar la intensidad de 0 a 1 de manera fluida
   // El blend se hace en el backend sin llamar a prepare(), así que es instantáneo
@@ -158,7 +159,7 @@
             imagePlayerRef.startCountdown();
           }
           autoCaptureTimeoutId = null;
-        }, 11000); // 11 segundos antes de iniciar cuenta atrás (4 segundos de cuenta atrás = 15 total)
+        }, 5000); // 5 segundos antes de iniciar cuenta atrás (4 segundos de cuenta atrás = 15 total)
       }
     }
 
@@ -217,7 +218,7 @@
 
         // Iniciar la animación automática de intensidad
         // Duración de 15 segundos (15000ms) para una transformación más lenta y suave
-        animateIntensity(25000);
+        animateIntensity(15000);
       } else {
         // Detener animación si está corriendo
         stopAnimationIfRunning();

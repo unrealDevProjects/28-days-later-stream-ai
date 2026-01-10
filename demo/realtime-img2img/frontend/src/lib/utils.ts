@@ -90,12 +90,13 @@ export async function captureContainerWithFrame(
   containerEl: HTMLDivElement,
   info?: IImageInfo
 ): Promise<SnapshotResult> {
+  let canvas: HTMLCanvasElement | null = null;
   try {
     // Esperar un momento para que el DOM se estabilice
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Capturar con html2canvas - opciones básicas
-    const canvas = await html2canvas(containerEl, {
+    canvas = await html2canvas(containerEl, {
       backgroundColor: null,
       scale: 1.5,
       logging: false,
@@ -106,12 +107,35 @@ export async function captureContainerWithFrame(
     // Convertir a JPEG
     const dataURL = canvas.toDataURL('image/jpeg', 0.9);
     
+    // Limpiar canvas inmediatamente después de obtener la data URL
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    canvas.width = 0;
+    canvas.height = 0;
+    canvas = null;
+    
     // Subir y compartir
     const result = await processAndShareImage(dataURL, info);
     
+    // Limpiar la data URL de memoria si es posible
     return result;
   } catch (err) {
     console.error('Error al capturar con marco:', err);
+    // Asegurar limpieza incluso en caso de error
+    if (canvas) {
+      try {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        canvas.width = 0;
+        canvas.height = 0;
+      } catch (cleanupErr) {
+        // Ignorar errores de limpieza
+      }
+    }
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Error desconocido'
@@ -129,10 +153,25 @@ export async function snapImageWithQR(
   canvas.width = imageEl.naturalWidth;
   canvas.height = imageEl.naturalHeight;
   const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+  
+  if (!ctx) {
+    return {
+      success: false,
+      error: 'No se pudo obtener contexto 2D del canvas'
+    };
+  }
+  
   ctx.drawImage(imageEl, 0, 0);
   const dataURL = canvas.toDataURL('image/jpeg', 0.95);
   
-  return await processAndShareImage(dataURL, info);
+  // Limpiar canvas inmediatamente
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.width = 0;
+  canvas.height = 0;
+  
+  const result = await processAndShareImage(dataURL, info);
+  
+  return result;
 }
 
 // Función original para descargar directamente (fallback)
