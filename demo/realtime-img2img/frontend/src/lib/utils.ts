@@ -88,30 +88,134 @@ async function processAndShareImage(
 // Función para capturar el contenedor completo con el marco
 export async function captureContainerWithFrame(
   containerEl: HTMLDivElement,
+  imageEl: HTMLImageElement,
+  frameEl: HTMLImageElement,
   info?: IImageInfo
 ): Promise<SnapshotResult> {
   let canvas: HTMLCanvasElement | null = null;
   try {
-    // Esperar un momento para que el DOM se estabilice
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Esperar un momento para que las imágenes se carguen completamente
+    await new Promise(resolve => setTimeout(resolve, 200));
     
-    // Capturar con html2canvas - opciones básicas
-    canvas = await html2canvas(containerEl, {
-      backgroundColor: null,
-      scale: 1.5,
-      logging: false,
-      useCORS: true,
-      allowTaint: true
+    // Obtener las dimensiones REALES del contenedor tal como se ve en pantalla
+    const rect = containerEl.getBoundingClientRect();
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
+    const containerAspectRatio = containerWidth / containerHeight;
+    
+    console.log('📐 Dimensiones del contenedor:', { 
+      width: containerWidth, 
+      height: containerHeight,
+      aspectRatio: containerAspectRatio.toFixed(4)
+    });
+    
+    // Obtener dimensiones naturales de la imagen del stream (800x800 = 1:1)
+    const streamNaturalWidth = imageEl.naturalWidth;
+    const streamNaturalHeight = imageEl.naturalHeight;
+    const streamAspectRatio = streamNaturalWidth / streamNaturalHeight;
+    
+    console.log('📸 Dimensiones naturales del stream:', { 
+      width: streamNaturalWidth, 
+      height: streamNaturalHeight,
+      aspectRatio: streamAspectRatio.toFixed(4)
+    });
+    
+    const scale = 2; // Escala para mayor resolución
+    
+    // Calcular dimensiones del canvas final (9:16)
+    const finalWidth = Math.round(containerWidth * scale);
+    const finalHeight = Math.round(containerHeight * scale);
+    
+    // Crear canvas final con dimensiones exactas del contenedor
+    canvas = document.createElement('canvas');
+    canvas.width = finalWidth;
+    canvas.height = finalHeight;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      throw new Error('No se pudo obtener contexto 2D del canvas');
+    }
+    
+    // Fondo negro
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Dibujar la imagen del stream manteniendo su aspect ratio natural (1:1)
+    // LLENAR TODA LA ALTURA - la imagen se acercará y recortará por los lados si es necesario
+    let streamDrawWidth: number;
+    let streamDrawHeight: number;
+    let streamOffsetX: number;
+    let streamOffsetY: number;
+    
+    // FORZAR que llene TODA la altura del contenedor (sin barras negras arriba/abajo)
+    streamDrawHeight = finalHeight; // Usar TODA la altura disponible
+    streamDrawWidth = Math.round(streamDrawHeight * streamAspectRatio); // Mantener proporción 1:1
+    
+    // La imagen será más ancha que el contenedor (porque es 1:1 y el contenedor es 9:16)
+    // Centrar horizontalmente - se recortará por los lados, pero llenará toda la altura
+    streamOffsetX = Math.round((finalWidth - streamDrawWidth) / 2); // Centrar
+    streamOffsetY = 0; // Comenzar desde arriba - SIN barras negras arriba/abajo
+    
+    console.log('🔍 Cálculo de escalado:', {
+      contenedor: { width: finalWidth, height: finalHeight },
+      imagenOriginal: { width: streamNaturalWidth, height: streamNaturalHeight, aspectRatio: streamAspectRatio },
+      imagenEscalada: { width: streamDrawWidth, height: streamDrawHeight, offsetX: streamOffsetX, offsetY: streamOffsetY },
+      ocupacion: {
+        ancho: `${Math.min(100, (finalWidth / streamDrawWidth) * 100).toFixed(1)}%`,
+        alto: '100%'
+      }
+    });
+    
+    // Dibujar la imagen del stream SIN estirar, escalada para ocupar más área
+    ctx.drawImage(
+      imageEl,
+      0, 0, streamNaturalWidth, streamNaturalHeight, // Fuente completa
+      streamOffsetX, streamOffsetY, streamDrawWidth, streamDrawHeight // Destino escalado pero proporcional
+    );
+    
+    console.log('📸 Imagen del stream dibujada:', {
+      source: { width: streamNaturalWidth, height: streamNaturalHeight },
+      destination: { x: streamOffsetX, y: streamOffsetY, width: streamDrawWidth, height: streamDrawHeight }
+    });
+    
+    // Dibujar el marco encima usando html2canvas para capturar correctamente
+    if (frameEl && frameEl.complete) {
+      const frameRect = frameEl.getBoundingClientRect();
+      const frameCanvas = await html2canvas(frameEl, {
+        backgroundColor: null,
+        scale: scale,
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        width: frameRect.width,
+        height: frameRect.height
+      });
+      
+      // Dibujar el marco en el canvas final
+      ctx.drawImage(frameCanvas, 0, 0, finalWidth, finalHeight);
+      
+      // Limpiar el canvas temporal del marco
+      const frameCtx = frameCanvas.getContext('2d');
+      if (frameCtx) {
+        frameCtx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+      }
+      frameCanvas.width = 0;
+      frameCanvas.height = 0;
+      
+      console.log('🖼️ Marco dibujado sobre la imagen');
+    }
+
+    console.log('✅ Canvas final creado:', { 
+      width: canvas.width, 
+      height: canvas.height,
+      aspectRatio: (canvas.width / canvas.height).toFixed(4)
     });
 
-    // Convertir a JPEG
-    const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+    // Convertir a JPEG manteniendo las proporciones exactas
+    const dataURL = canvas.toDataURL('image/jpeg', 0.95);
     
     // Limpiar canvas inmediatamente después de obtener la data URL
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas.width = 0;
     canvas.height = 0;
     canvas = null;

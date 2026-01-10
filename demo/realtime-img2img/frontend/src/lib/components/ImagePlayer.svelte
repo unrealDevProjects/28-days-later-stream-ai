@@ -21,6 +21,7 @@
   $: console.log('isLCMRunning', isLCMRunning);
   let imageEl: HTMLImageElement;
   let containerEl: HTMLDivElement;
+  let frameEl: HTMLImageElement; // Referencia al elemento del marco
   let showInitialUI: boolean = true;
   let originalVideoEl: HTMLVideoElement; // Video element para la cámara original muy pequeña
 
@@ -120,7 +121,7 @@
         }, 15000);
       });
 
-      const capturePromise = captureContainerWithFrame(containerEl, {
+      const capturePromise = captureContainerWithFrame(containerEl, imageEl, frameEl, {
         prompt: getPipelineValues()?.prompt,
         negative_prompt: getPipelineValues()?.negative_prompt,
         seed: getPipelineValues()?.seed,
@@ -259,12 +260,13 @@
 
   <!-- Área donde se muestra el video/imagen procesada - solo visible cuando showInitialUI es false -->
   {#if !showInitialUI}
-    <div class="absolute left-[7%] top-[2%] z-0 h-[86%] w-[84%]">
+    <div class="absolute left-[0%] top-[0%] z-0 h-[100%] w-[100%] bg-black overflow-hidden">
       <!-- svelte-ignore a11y-missing-attribute -->
       {#if isLCMRunning && $streamId}
         <img
           bind:this={imageEl}
-          class="h-full w-full object-cover"
+          class="h-full w-full object-cover object-center"
+          style="image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"
           src={'/api/stream/' + $streamId}
         />
         <div class="absolute bottom-1 right-1 z-10">
@@ -324,6 +326,7 @@
 
   <!-- Imagen del marco como overlay - sin blur -->
   <img
+    bind:this={frameEl}
     src={frameImagePath}
     alt="Frame"
     class="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
