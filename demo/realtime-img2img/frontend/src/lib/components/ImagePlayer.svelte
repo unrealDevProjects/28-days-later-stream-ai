@@ -33,6 +33,7 @@
   let showQRModal: boolean = false;
   let photoUrl: string = '';
   let isTakingSnapshot: boolean = false;
+  let qrModalTimeoutId: number | null = null; // Timeout para cerrar automáticamente el QR después de 40s
 
   // URL del formulario de Sony Pictures - puede venir como prop o desde config
   // Nota: Ya no se usa para mostrar el FormModal, el middleware se encarga de todo
@@ -139,6 +140,8 @@
         console.log('Foto capturada exitosamente, URL:', result.photo_url);
         // Mostrar directamente el QR modal (el middleware se encarga del formulario)
         showQRModal = true;
+        // Iniciar timeout para cerrar automáticamente después de 40 segundos
+        startQRModalAutoClose();
       } else {
         console.warn('Captura con marco falló, intentando fallback...');
         // Fallback: capturar solo la imagen sin marco
@@ -153,6 +156,8 @@
           console.log('Fallback exitoso, URL:', fallbackResult.photo_url);
           // Mostrar directamente el QR modal (el middleware se encarga del formulario)
           showQRModal = true;
+          // Iniciar timeout para cerrar automáticamente después de 40 segundos
+          startQRModalAutoClose();
         } else {
           console.error('Ambos métodos de captura fallaron', fallbackResult);
         }
@@ -179,6 +184,8 @@
             photoUrl = fallbackResult.photo_url;
             // Mostrar directamente el QR modal (el middleware se encarga del formulario)
             showQRModal = true;
+            // Iniciar timeout para cerrar automáticamente después de 40 segundos
+            startQRModalAutoClose();
           } else {
             console.error('Fallback también falló:', fallbackResult);
           }
@@ -198,8 +205,34 @@
     }
   }
 
+  // Función para iniciar el timeout de cierre automático del QR
+  function startQRModalAutoClose() {
+    // Limpiar timeout anterior si existe
+    if (qrModalTimeoutId !== null) {
+      clearTimeout(qrModalTimeoutId);
+      qrModalTimeoutId = null;
+    }
+    
+    // Configurar timeout de 40 segundos para cerrar automáticamente
+    qrModalTimeoutId = window.setTimeout(() => {
+      console.log('Timeout de 40s alcanzado, cerrando QR modal automáticamente...');
+      closeQRModal();
+    }, 40000); // 40 segundos
+  }
+
+  // Función para limpiar el timeout del QR
+  function clearQRModalTimeout() {
+    if (qrModalTimeoutId !== null) {
+      clearTimeout(qrModalTimeoutId);
+      qrModalTimeoutId = null;
+    }
+  }
+
   function closeQRModal() {
     console.log('Cerrando QR modal, recargando página...');
+    
+    // Limpiar el timeout si existe
+    clearQRModalTimeout();
     
     // Cerrar modal
     showQRModal = false;
