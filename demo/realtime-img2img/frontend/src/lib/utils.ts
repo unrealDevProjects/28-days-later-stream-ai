@@ -45,7 +45,8 @@ async function addExifMetadata(
 // Función para procesar y compartir la imagen
 async function processAndShareImage(
   imageDataURL: string,
-  info?: IImageInfo
+  info?: IImageInfo,
+  formUrl?: string
 ): Promise<SnapshotResult> {
   try {
     // Añadir metadatos EXIF si es necesario
@@ -54,16 +55,23 @@ async function processAndShareImage(
     // Obtener modo de compartir (solo digitalocean o local ahora)
     const shareMode = localStorage.getItem('shareMode') || ShareConfig.mode;
     
+    const requestBody: any = {
+      image: withExif,
+      mode: shareMode === 'digitalocean' ? 'external' : 'url',
+      service: shareMode === 'digitalocean' ? 'digitalocean' : 'local'
+    };
+    
+    // Agregar form_url si está disponible
+    if (formUrl) {
+      requestBody.form_url = formUrl;
+    }
+    
     const response = await fetch('/api/snapshot', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        image: withExif,
-        mode: shareMode === 'digitalocean' ? 'external' : 'url',
-        service: shareMode === 'digitalocean' ? 'digitalocean' : 'local'
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -90,7 +98,8 @@ export async function captureContainerWithFrame(
   containerEl: HTMLDivElement,
   imageEl: HTMLImageElement,
   frameEl: HTMLImageElement,
-  info?: IImageInfo
+  info?: IImageInfo,
+  formUrl?: string
 ): Promise<SnapshotResult> {
   let canvas: HTMLCanvasElement | null = null;
   try {
@@ -221,7 +230,7 @@ export async function captureContainerWithFrame(
     canvas = null;
     
     // Subir y compartir
-    const result = await processAndShareImage(dataURL, info);
+    const result = await processAndShareImage(dataURL, info, formUrl);
     
     // Limpiar la data URL de memoria si es posible
     return result;
@@ -250,7 +259,8 @@ export async function captureContainerWithFrame(
 // Función principal para capturar snapshot con QR (mantener por compatibilidad)
 export async function snapImageWithQR(
   imageEl: HTMLImageElement,
-  info: IImageInfo
+  info: IImageInfo,
+  formUrl?: string
 ): Promise<SnapshotResult> {
   // Función antigua, usar processAndShareImage internamente
   const canvas = document.createElement('canvas');

@@ -1,5 +1,5 @@
-from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect, UploadFile, File, Query
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi import Request
@@ -206,21 +206,39 @@ class App:
                 image_data = data.get("image")  # Base64 encoded image
                 mode = data.get("mode", "url")  # 'url', 'dataurl', o 'external'
                 external_service = data.get("service", "tmpfiles")  # Para modo external
+                form_url = data.get("form_url")  # URL del formulario opcional
                 
                 if not image_data:
                     raise HTTPException(status_code=400, detail="No image data provided")
                 
                 # Para modo External (solo DigitalOcean ahora)
                 if mode == "external" and external_service == "digitalocean":
-                    photo_url = upload_to_external(image_data, "digitalocean")
-                    if photo_url:
-                        logging.info(f"Snapshot uploaded to DigitalOcean Spaces: {photo_url}")
-                        return JSONResponse({
-                            "success": True,
-                            "mode": "external",
-                            "service": "digitalocean",
-                            "photo_url": photo_url
-                        })
+                    cdn_url = upload_to_external(image_data, "digitalocean")
+                    if cdn_url:
+                        logging.info(f"Snapshot uploaded to DigitalOcean Spaces: {cdn_url}")
+                        
+                        # Si hay form_url, redirigir al middleware de Render
+                        if form_url:
+                            from urllib.parse import quote
+                            middleware_url = "https://middleware-picture-28days.onrender.com"
+                            photo_url = f"{middleware_url}/?image={quote(cdn_url)}"
+                            logging.info(f"QR URL con middleware: {photo_url}")
+                            
+                            return JSONResponse({
+                                "success": True,
+                                "mode": "external",
+                                "service": "digitalocean",
+                                "photo_url": photo_url,  # URL del middleware con imagen del CDN
+                                "cdn_url": cdn_url  # URL del CDN para referencia
+                            })
+                        else:
+                            # Si no hay form_url, devolver directamente la URL del CDN
+                            return JSONResponse({
+                                "success": True,
+                                "mode": "external",
+                                "service": "digitalocean",
+                                "photo_url": cdn_url
+                            })
                     else:
                         # Fallback a modo local si falla
                         logging.warning(f"DigitalOcean upload failed, falling back to local storage")
@@ -284,16 +302,35 @@ class App:
                     f.write(image_bytes)
                 
                 # Construir URL de la foto
-                # Si hay una URL base externa configurada, usarla (para ngrok, cloudflare, etc)
-                # Si no, usar la IP local detectada
-                if SERVER_BASE_URL:
-                    # URL externa (ya incluye protocolo y dominio)
-                    base_url = SERVER_BASE_URL.rstrip('/')
-                    photo_url = f"{base_url}/api/photo/{photo_id}"
+                # Si hay form_url, redirigir al middleware de Render (que se encargará de mostrar HTML)
+                if form_url:
+                    from urllib.parse import quote
+                    # Para modo local, también necesitamos subir a CDN o usar una URL accesible
+                    # Por ahora, si hay form_url y es modo local, intentar usar el servidor
+                    # Pero mejor usar el middleware que acepta URLs del CDN
+                    middleware_url = "https://middleware-picture-28days.onrender.com"
+                    
+                    # Si está en modo external, ya tenemos cdn_url, usar esa
+                    # Si no, construir URL local accesible
+                    if SERVER_BASE_URL:
+                        base_url = SERVER_BASE_URL.rstrip('/')
+                        image_url_for_middleware = f"{base_url}/api/photo/{photo_id}/image"
+                    else:
+                        protocol = "https" if self.args.ssl_certfile else "http"
+                        image_url_for_middleware = f"{protocol}://{LOCAL_IP}:{self.args.port}/api/photo/{photo_id}/image"
+                    
+                    photo_url = f"{middleware_url}/?image={quote(image_url_for_middleware)}"
+                    logging.info(f"QR URL con middleware (modo local): {photo_url}")
                 else:
-                    # IP local
-                    protocol = "https" if self.args.ssl_certfile else "http"
-                    photo_url = f"{protocol}://{LOCAL_IP}:{self.args.port}/api/photo/{photo_id}"
+                    # Si no hay form_url, construir URL normal del servidor
+                    if SERVER_BASE_URL:
+                        # URL externa (ya incluye protocolo y dominio)
+                        base_url = SERVER_BASE_URL.rstrip('/')
+                        photo_url = f"{base_url}/api/photo/{photo_id}"
+                    else:
+                        # IP local
+                        protocol = "https" if self.args.ssl_certfile else "http"
+                        photo_url = f"{protocol}://{LOCAL_IP}:{self.args.port}/api/photo/{photo_id}"
                 
                 logging.info(f"Snapshot saved: {filepath}, URL: {photo_url}")
                 
@@ -308,12 +345,226 @@ class App:
                 logging.error(f"Error saving snapshot: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
-        # Endpoint para servir las fotos guardadas
-        @self.app.get("/api/photo/{photo_id}")
-        async def get_photo(photo_id: str):
+        # Endpoint para servir solo la imagen (sin HTML)
+        @self.app.get("/api/photo/{photo_id}/image")
+        async def get_photo_image(photo_id: str):
             filepath = os.path.join(SNAPSHOTS_DIR, f"{photo_id}.jpg")
             if not os.path.exists(filepath):
                 raise HTTPException(status_code=404, detail="Photo not found")
+            return FileResponse(filepath, media_type="image/jpeg")
+        
+        # Endpoint para servir las fotos guardadas
+        @self.app.get("/api/photo/{photo_id}")
+        async def get_photo(photo_id: str, formUrl: str = Query(None), cdnUrl: str = Query(None)):
+            filepath = os.path.join(SNAPSHOTS_DIR, f"{photo_id}.jpg")
+            
+            # Si hay formUrl en los query params, devolver una página HTML que muestre la imagen y abra el formulario
+            if formUrl:
+                # Si hay cdnUrl, usar esa URL para la imagen (desde DigitalOcean CDN)
+                # Si no, usar la imagen local
+                if cdnUrl:
+                    image_url = cdnUrl  # Usar URL del CDN
+                else:
+                    # Construir la URL completa de la imagen local (usando el endpoint de solo imagen)
+                    if SERVER_BASE_URL:
+                        base_url = SERVER_BASE_URL.rstrip('/')
+                        image_url = f"{base_url}/api/photo/{photo_id}/image"
+                    else:
+                        protocol = "https" if self.args.ssl_certfile else "http"
+                        image_url = f"{protocol}://{LOCAL_IP}:{self.args.port}/api/photo/{photo_id}/image"
+                
+                # Verificar que la imagen existe si es local (si es CDN, no podemos verificar aquí)
+                if not cdnUrl and not os.path.exists(filepath):
+                    raise HTTPException(status_code=404, detail="Photo not found")
+                
+                html_content = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tu Foto Zombie</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }}
+        img {{
+            max-width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(255, 0, 0, 0.3);
+        }}
+        .loading {{
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+        }}
+        .form-button {{
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }}
+        .form-button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.6);
+        }}
+        .form-button:active {{
+            transform: translateY(0);
+        }}
+        .form-button.hidden {{
+            display: none;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="{image_url}" alt="Tu Foto Zombie" onload="hideLoading()" onerror="showError()">
+        <div class="loading" id="loading">Cargando foto...</div>
+        <button id="formButton" class="form-button hidden" onclick="openForm()">
+            📝 Abrir Formulario
+        </button>
+    </div>
+    <script>
+        let formOpened = false;
+        let autoOpenAttempted = false;
+        const formUrl = "{formUrl}";
+        const formButton = document.getElementById('formButton');
+        
+        function openForm() {{
+            if (!formUrl) return;
+            
+            if (!formOpened) {{
+                formOpened = true;
+                try {{
+                    // Intentar abrir el formulario en una nueva pestaña
+                    const formWindow = window.open(formUrl, '_blank');
+                    
+                    // Si el popup fue bloqueado (retorna null), mostrar el botón
+                    if (!formWindow) {{
+                        console.warn('Popup bloqueado por el navegador');
+                        showButton();
+                    }} else {{
+                        // Ocultar el botón si se abrió correctamente
+                        if (formButton) {{
+                            formButton.classList.add('hidden');
+                        }}
+                    }}
+                }} catch (e) {{
+                    console.error('Error al abrir formulario:', e);
+                    showButton();
+                }}
+            }}
+        }}
+        
+        function showButton() {{
+            if (formButton) {{
+                formButton.classList.remove('hidden');
+            }}
+        }}
+        
+        function hideLoading() {{
+            const loadingEl = document.getElementById('loading');
+            if (loadingEl) {{
+                loadingEl.style.display = 'none';
+            }}
+            // Abrir formulario después de que la imagen se carga
+            if (!autoOpenAttempted) {{
+                openForm();
+            }}
+        }}
+        
+        function showError() {{
+            const loadingEl = document.getElementById('loading');
+            if (loadingEl) {{
+                loadingEl.textContent = 'Error al cargar la imagen';
+            }}
+            showButton();
+        }}
+        
+        // Abrir el formulario automáticamente cuando se carga la página
+        // Intentamos múltiples veces porque los navegadores móviles pueden bloquear popups
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', function() {{
+                autoOpenAttempted = true;
+                // Intentar inmediatamente después de DOM ready
+                openForm();
+                setTimeout(openForm, 100);
+                setTimeout(openForm, 300);
+                setTimeout(openForm, 500);
+                // Si después de 1 segundo no se abrió, mostrar el botón
+                setTimeout(function() {{
+                    if (!formOpened) {{
+                        showButton();
+                    }}
+                }}, 1000);
+            }});
+        }} else {{
+            // Si ya está cargado, intentar inmediatamente
+            autoOpenAttempted = true;
+            openForm();
+            setTimeout(openForm, 100);
+            setTimeout(openForm, 300);
+            setTimeout(openForm, 500);
+            // Si después de 1 segundo no se abrió, mostrar el botón
+            setTimeout(function() {{
+                if (!formOpened) {{
+                    showButton();
+                }}
+            }}, 1000);
+        }}
+        
+        // También intentar cuando la página esté completamente cargada
+        window.addEventListener('load', function() {{
+            if (!autoOpenAttempted) {{
+                autoOpenAttempted = true;
+                openForm();
+                setTimeout(openForm, 200);
+                setTimeout(openForm, 400);
+                // Si después de 1 segundo no se abrió, mostrar el botón
+                setTimeout(function() {{
+                    if (!formOpened) {{
+                        showButton();
+                    }}
+                }}, 1000);
+            }}
+        }});
+    </script>
+</body>
+</html>
+"""
+                return HTMLResponse(content=html_content)
+            
+            # Si no hay formUrl, devolver la imagen directamente
             return FileResponse(filepath, media_type="image/jpeg")
 
         if not os.path.exists("public"):

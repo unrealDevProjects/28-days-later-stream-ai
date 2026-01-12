@@ -6,7 +6,6 @@
   import Button from '$lib/components/Button.svelte';
   import Floppy from '$lib/icons/floppy.svelte';
   import QRModal from '$lib/components/QRModal.svelte';
-  import FormModal from '$lib/components/FormModal.svelte';
   import { snapImage, snapImageWithQR, captureContainerWithFrame } from '$lib/utils';
 
   // Ruta de la imagen del marco (debe estar en static/)
@@ -35,9 +34,8 @@
   let photoUrl: string = '';
   let isTakingSnapshot: boolean = false;
 
-  // Estado para el modal de formulario
-  let showFormModal: boolean = false;
   // URL del formulario de Sony Pictures - puede venir como prop o desde config
+  // Nota: Ya no se usa para mostrar el FormModal, el middleware se encarga de todo
   export let formUrl: string = '';
 
   // Estado para la cuenta atrás
@@ -126,7 +124,7 @@
         negative_prompt: getPipelineValues()?.negative_prompt,
         seed: getPipelineValues()?.seed,
         guidance_scale: getPipelineValues()?.guidance_scale
-      });
+      }, formUrl);
 
       const result = await Promise.race([capturePromise, timeoutPromise]);
 
@@ -139,12 +137,8 @@
       if (result && result.success && result.photo_url) {
         photoUrl = result.photo_url;
         console.log('Foto capturada exitosamente, URL:', result.photo_url);
-        // Mostrar primero el formulario si hay URL, luego el QR
-        if (formUrl) {
-          showFormModal = true;
-        } else {
-          showQRModal = true;
-        }
+        // Mostrar directamente el QR modal (el middleware se encarga del formulario)
+        showQRModal = true;
       } else {
         console.warn('Captura con marco falló, intentando fallback...');
         // Fallback: capturar solo la imagen sin marco
@@ -153,15 +147,12 @@
           negative_prompt: getPipelineValues()?.negative_prompt,
           seed: getPipelineValues()?.seed,
           guidance_scale: getPipelineValues()?.guidance_scale
-        });
+        }, formUrl);
         if (fallbackResult && fallbackResult.success && fallbackResult.photo_url) {
           photoUrl = fallbackResult.photo_url;
           console.log('Fallback exitoso, URL:', fallbackResult.photo_url);
-          if (formUrl) {
-            showFormModal = true;
-          } else {
-            showQRModal = true;
-          }
+          // Mostrar directamente el QR modal (el middleware se encarga del formulario)
+          showQRModal = true;
         } else {
           console.error('Ambos métodos de captura fallaron', fallbackResult);
         }
@@ -186,11 +177,8 @@
           });
           if (fallbackResult && fallbackResult.success && fallbackResult.photo_url) {
             photoUrl = fallbackResult.photo_url;
-            if (formUrl) {
-              showFormModal = true;
-            } else {
-              showQRModal = true;
-            }
+            // Mostrar directamente el QR modal (el middleware se encarga del formulario)
+            showQRModal = true;
           } else {
             console.error('Fallback también falló:', fallbackResult);
           }
@@ -210,20 +198,11 @@
     }
   }
 
-  function closeFormModal() {
-    showFormModal = false;
-    // Después de cerrar el formulario, mostrar el QR
-    if (photoUrl) {
-      showQRModal = true;
-    }
-  }
-
   function closeQRModal() {
     console.log('Cerrando QR modal, recargando página...');
     
-    // Cerrar modales primero
+    // Cerrar modal
     showQRModal = false;
-    showFormModal = false;
     
     // Recargar la página inmediatamente usando múltiples métodos para asegurar que funcione
     // Esto resetea completamente el estado de la aplicación
@@ -369,10 +348,7 @@
   {/if}
 </div>
 
-<!-- Modal de formulario (se muestra primero si hay formUrl) -->
-<FormModal formUrl={formUrl} show={showFormModal} on:close={closeFormModal} />
-
-<!-- Modal QR (se muestra después del formulario o directamente si no hay formulario) -->
+<!-- Modal QR -->
 <QRModal {photoUrl} show={showQRModal} on:close={closeQRModal} />
 
 <style>
