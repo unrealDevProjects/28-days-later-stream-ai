@@ -39,18 +39,54 @@
   // Nota: Ya no se usa para mostrar el FormModal, el middleware se encarga de todo
   export let formUrl: string = '';
 
+  // Estado para las instrucciones
+  let showInstructions: boolean = false;
+  let instructionsTimeoutId: number | null = null;
+  let instructionsShown: boolean = false; // Flag para asegurar que solo se muestren una vez
+  
   // Estado para la cuenta atrás
   let showCountdown: boolean = false;
   let countdownNumber: number = 3;
   let countdownTimeoutId: number | null = null;
+  
+  // Mostrar instrucciones cuando el stream esté visible
+  $: if (isLCMRunning && $streamId && !showInitialUI && !instructionsShown) {
+    // El stream está visible, mostrar instrucciones durante 5 segundos
+    showInstructions = true;
+    instructionsShown = true;
+    
+    // Limpiar timeout anterior si existe
+    if (instructionsTimeoutId !== null) {
+      clearTimeout(instructionsTimeoutId);
+      instructionsTimeoutId = null;
+    }
+    
+    // Ocultar instrucciones después de 5 segundos
+    instructionsTimeoutId = window.setTimeout(() => {
+      showInstructions = false;
+      instructionsTimeoutId = null;
+    }, 5000);
+  }
+  
+  // Resetear el flag cuando se reinicia la experiencia
+  $: if (showInitialUI) {
+    instructionsShown = false;
+    showInstructions = false;
+    if (instructionsTimeoutId !== null) {
+      clearTimeout(instructionsTimeoutId);
+      instructionsTimeoutId = null;
+    }
+  }
 
-  // Función para iniciar la cuenta atrás
+  // Función para iniciar la cuenta atrás (sin instrucciones, ya se mostraron al inicio)
   export function startCountdown() {
+    // Limpiar timeouts anteriores si existen
     if (countdownTimeoutId !== null) {
       clearTimeout(countdownTimeoutId);
       countdownTimeoutId = null;
     }
 
+    // Iniciar la cuenta atrás directamente
     showCountdown = true;
     countdownNumber = 3;
 
@@ -85,7 +121,13 @@
       clearTimeout(countdownTimeoutId);
       countdownTimeoutId = null;
     }
+    if (instructionsTimeoutId !== null) {
+      clearTimeout(instructionsTimeoutId);
+      instructionsTimeoutId = null;
+    }
     showCountdown = false;
+    showInstructions = false;
+    instructionsShown = false;
   }
 
   // Exportar función para que pueda ser llamada desde el componente padre
@@ -255,6 +297,7 @@
 
   function handleStartExperience() {
     showInitialUI = false;
+    // Iniciar el stream inmediatamente - las instrucciones se mostrarán cuando el stream esté visible
     toggleLcmLive();
   }
 </script>
@@ -343,6 +386,18 @@
     alt="Frame"
     class="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
   />
+
+  <!-- Instrucciones visuales (encima del stream, durante 5 segundos) -->
+  {#if showInstructions && !showInitialUI && isLCMRunning && $streamId}
+    <div class="absolute inset-0 z-50 flex items-start justify-center pt-20">
+      <img
+        src="/images/instrucciones.svg"
+        alt="Instrucciones: Quédate quieto"
+        class="max-h-[20%] max-w-[60%] object-contain drop-shadow-2xl"
+        style="animation: fadeIn 0.3s ease-out;"
+      />
+    </div>
+  {/if}
 
   <!-- Cuenta atrás visual -->
   {#if showCountdown && !showInitialUI}

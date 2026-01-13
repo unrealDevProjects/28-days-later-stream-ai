@@ -159,7 +159,7 @@
             imagePlayerRef.startCountdown();
           }
           autoCaptureTimeoutId = null;
-        }, 5000); // 5 segundos antes de iniciar cuenta atrás (4 segundos de cuenta atrás = 15 total)
+        }, 2000); // 5 segundos antes de iniciar cuenta atrás (4 segundos de cuenta atrás = 15 total)
       }
     }
 
@@ -218,7 +218,7 @@
 
         // Iniciar la animación automática de intensidad
         // Duración de 15 segundos (15000ms) para una transformación más lenta y suave
-        animateIntensity(15000);
+        animateIntensity(11000);
       } else {
         // Detener animación si está corriendo
         stopAnimationIfRunning();

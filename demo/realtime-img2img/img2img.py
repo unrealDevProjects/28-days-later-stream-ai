@@ -75,7 +75,7 @@ class Pipeline:
         #   [20, 35] = efecto alto - más transformación (puede perder la pose)
         #   [10, 25] = efecto máximo - mucha transformación
         # Para que siga la pose, usamos valores MÁS ALTOS
-        self.t_index_list = [30, 35]  # Efecto suave - respeta la pose y estructura original
+        self.t_index_list = [27, 32]  # Efecto suave - respeta la pose y estructura original
         
         # Para mejor calidad de imagen, deshabilitamos tiny VAE (usa VAE completo)
         # Si quieres más velocidad a cambio de calidad, puedes usar args.taesd
