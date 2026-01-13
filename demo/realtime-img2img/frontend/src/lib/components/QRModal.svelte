@@ -29,14 +29,14 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <!-- Modal -->
     <div
-      class="relative mx-4 flex max-w-sm flex-col items-center rounded-2xl border-2 border-red-600 bg-gradient-to-b from-gray-900 to-black p-6 shadow-2xl"
+      class="relative mx-4 flex max-w-sm flex-col items-center rounded-2xl bg-gradient-to-b from-gray-1200 to-black p-6 shadow-2xl"
       on:click|stopPropagation
       on:keydown|stopPropagation
       role="document"
     >
       <!-- Botón cerrar -->
       <button
-        class="absolute right-3 top-3 text-3xl text-white/70 transition-colors hover:text-white"
+        class="absolute right-1 top-0 text-3xl text-white/70 transition-colors hover:text-white"
         on:click={close}
         aria-label="Cerrar"
       >
@@ -44,12 +44,10 @@
       </button>
 
       <!-- Título -->
-      <h2 class="mb-4 text-center text-2xl font-bold text-red-500">¡TU FOTO ZOMBIE!</h2>
 
       <!-- Subtítulo -->
-      <p class="mb-4 text-center text-sm text-gray-300">
-        Escanea el código QR para descargar tu foto
-      </p>
+      <img src="/images/copy_2.png" alt="Código QR para descargar tu foto" class="mb-4">
+       
 
       <!-- QR Code -->
       <div class="mb-4 rounded-lg bg-white p-3 shadow-lg">
@@ -67,19 +65,19 @@
       </div>
 
       <!-- URL (truncada) -->
-      <p class="mb-4 max-w-full truncate text-xs text-gray-500">
+   <!--    <p class="mb-4 max-w-full truncate text-xs text-gray-500">
         {photoUrl}
-      </p>
+      </p> -->
 
       <!-- Botones -->
-      <div class="flex w-full gap-3">
+      <div class="flex w-full gap-3 justify-center">
        <!--  <Button
           on:click={() => window.open(photoUrl, '_blank')}
           classList="flex-1 !bg-gray-700 hover:!bg-gray-600"
         >
           Ver foto
         </Button> -->
-        <Button on:click={close} classList="flex-1 !bg-red-600 hover:!bg-red-700">Cerrar</Button>
+        <Button on:click={close} classList="!bg-red-600 hover:!bg-red-700 px-8">Cerrar</Button>
       </div>
     </div>
   </div>
